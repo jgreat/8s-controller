@@ -22,7 +22,8 @@ import adafruit_logging as logging
 from adafruit_display_text import bitmap_label
 
 log = logging.getLogger("code")
-log.setLevel(logging.DEBUG)
+# Note: Setting logging lever to debug will print out the access token in the logs.
+log.setLevel(logging.INFO)
 
 # Get WiFi details secrets.py file
 try:
