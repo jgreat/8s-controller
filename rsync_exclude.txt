@@ -1,0 +1,9 @@
+__pycache__/
+.fseventsd/
+secrets.py
+.vscode/
+.Trash-1000
+.Trashes
+boot_out.txt
+System Volume Information/
+.metadata_never_index
