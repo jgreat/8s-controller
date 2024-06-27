@@ -54,7 +54,7 @@ APP_CLIENT_ID = "0894c7f33bb94800a03f1f4df13a4f38"
 APP_CLIENT_SECRET = "f0954a3ed5763ba3d06834c73731a32f15f168f47d4f164751275def86db0c76"
 
 # eight sleep auth token api
-global_auth_URL = "https://auth-api.8slp.net/v1/tokens"
+auth_URL = "https://auth-api.8slp.net/v1/tokens"
 
 # eight sleep client api (about me)
 CLIENT_URL = "https://client-api.8slp.net/v1"
@@ -63,17 +63,17 @@ HOT = 0Xc93412
 ZERO = 0Xe0e0e0
 COLD = 0X4c34eb
 
-global_api_lock = False
-global_current_temp = 0
-global_device_id = ""
-global_side = ""
-global_side_active = False
-global_skip_next_display_off = True
-global_target_temp = 0
-global_target_temp_is_pending = False
+api_lock = False
+current_temp = 0
+device_id = ""
+side = ""
+side_active = False
+skip_next_display_off = True
+target_temp = 0
+target_temp_is_pending = False
 
 # Object to store the 8s access token
-global_auth = {
+auth = {
     "access_token": "",
     "user_id": "",
 }
@@ -103,7 +103,7 @@ def get_8s_access_token():
 
         :returns: None
     """
-    global global_auth
+    global auth
     auth_payload = {
         "client_id": APP_CLIENT_ID,
         "client_secret": APP_CLIENT_SECRET,
@@ -115,17 +115,16 @@ def get_8s_access_token():
     response_status_code = 0
     response_json = {}
 
-    with requests.post(global_auth_URL, json=auth_payload, headers=HEADERS) as response:
+    with requests.post(auth_URL, json=auth_payload, headers=HEADERS) as response:
         response_status_code = response.status_code
         response_json = response.json()
 
     if response_status_code != 200:
-        log.error("Error doing GET - status code: %s" % response_status_code)
         raise RuntimeError("Error doing GET - status code: %s" % response_status_code)
 
     log.debug("Auth Response:")
     filtered_response = response_json
-    global_auth = {
+    auth = {
         "access_token": filtered_response["access_token"],
         "user_id": filtered_response["userId"],
     }
@@ -145,7 +144,7 @@ def get_8s(url):
         :returns: dict
     """
     headers = HEADERS
-    headers["Authorization"] = "Bearer %s" % global_auth["access_token"]
+    headers["Authorization"] = "Bearer %s" % auth["access_token"]
 
     response_status_code = 0
     response_json = {}
@@ -157,11 +156,10 @@ def get_8s(url):
     if response_status_code == 401:
         # Try to refresh the token and submit the request again
         get_8s_access_token()
-        headers["Authorization"] = "Bearer %s" % global_auth["access_token"]
+        headers["Authorization"] = "Bearer %s" % auth["access_token"]
         response = requests.get(url, headers=headers)
 
     if response_status_code != 200:
-        log.error("Error doing GET - status code: %s" % response_status_code)
         raise RuntimeError("Error doing GET - status code: %s" % response_status_code)
 
     return response_json
@@ -180,7 +178,7 @@ def put_8s(url, payload):
         :returns: dict
     """
     headers = HEADERS
-    headers["Authorization"] = "Bearer %s" % global_auth["access_token"]
+    headers["Authorization"] = "Bearer %s" % auth["access_token"]
 
     response_status_code = 0
     response_json = {}
@@ -192,31 +190,30 @@ def put_8s(url, payload):
     if response_status_code == 401:
         # Try to refresh the token and submit the request again
         get_8s_access_token()
-        headers["Authorization"] = "Bearer %s" % global_auth["access_token"]
+        headers["Authorization"] = "Bearer %s" % auth["access_token"]
         response = requests.get(url, headers=headers)
 
     if response_status_code != 200:
-        log.error("Error doing GET - status code: %s" % response_status_code)
-        raise RuntimeError("Error doing GET - status code: %s" % response_status_code)
+        raise RuntimeError("Error doing PUT - status code: %s" % response_status_code)
 
     return response_json
 
 
-def get_8s_user_global_device_id():
+def get_8s_user_device_id():
     """
         Get the user's device ID from the 8s Client API.
 
         :returns: None
     """
-    global global_device_id, global_side
+    global device_id, side
     log.info("User Device Response:")
     response = get_8s("%s/users/me" % CLIENT_URL)
 
-    global_device_id = response["user"]["currentDevice"]["id"]
-    global_side = response["user"]["currentDevice"]["side"]
+    device_id = response["user"]["currentDevice"]["id"]
+    side = response["user"]["currentDevice"]["side"]
 
-    log.info("Device ID: %s" % global_device_id)
-    log.info("global_side: %s" % global_side)
+    log.info("Device ID: %s" % device_id)
+    log.info("side: %s" % side)
 
 
 def set_color(temp_level):
@@ -298,21 +295,21 @@ def setup_display():
 async def set_s8_target_temp_loop():
     """
         Loop to set the target temp level on the 8s device.
-        Only sets the target temp level if the global_target_temp has been changed by a button press.
+        Only sets the target temp level if the target_temp has been changed by a button press.
 
         :returns: None
     """
-    global global_target_temp, global_api_lock, INIT_DONE, global_side, global_target_temp_is_pending
+    global target_temp, api_lock, side, target_temp_is_pending
 
     while True:
         # we only want to set temp if the target_temp has been changed by a button press
-        if global_target_temp_is_pending:
-            if global_api_lock is False:
-                global_api_lock = True
-                log.info("set_s8_target_temp: Setting Target Temp Level to %s" % global_target_temp)
+        if target_temp_is_pending:
+            if api_lock is False:
+                api_lock = True
+                log.info("set_s8_target_temp: Setting Target Temp Level to %s" % target_temp)
 
                 payload = {
-                    "currentLevel": global_target_temp * 10,
+                    "currentLevel": target_temp * 10,
                     "currentState": {
                         "type": "smart"
                     }
@@ -320,8 +317,8 @@ async def set_s8_target_temp_loop():
                 response = put_8s("%s/users/me/temperature" % CLIENT_URL, payload)
                 log.debug(json.dumps(response))
 
-                global_target_temp_is_pending = False
-                global_api_lock = False
+                target_temp_is_pending = False
+                api_lock = False
         await asyncio.sleep(10)
 
 
@@ -332,34 +329,34 @@ async def get_s8_device_loop():
 
         :returns: None
     """
-    global global_current_temp, global_target_temp, global_side_active, global_api_lock, global_side, global_target_temp_is_pending
+    global current_temp, target_temp, side_active, api_lock, side, target_temp_is_pending
 
     while True:
         # lock the function to prevent multiple calls
-        if global_api_lock is False:
-            global_api_lock = True
+        if api_lock is False:
+            api_lock = True
             log.info("Refreshing Device Status")
-            response = get_8s("%s/devices/%s" % (CLIENT_URL, global_device_id))
+            response = get_8s("%s/devices/%s" % (CLIENT_URL, device_id))
 
-            kelvin = response["result"]["%sKelvin" % global_side]
-            heat_level = response["result"]["%sHeatingLevel" % global_side]
+            kelvin = response["result"]["%sKelvin" % side]
+            heat_level = response["result"]["%sHeatingLevel" % side]
 
-            global_side_active = kelvin["active"]
-            global_current_temp = round(heat_level / 10)
+            side_active = kelvin["active"]
+            current_temp = round(heat_level / 10)
             # Don't update the target temp if it's pending (from a button press)
-            if global_target_temp_is_pending is False:
-                global_target_temp = round(kelvin["currentTargetLevel"] / 10)
+            if target_temp_is_pending is False:
+                target_temp = round(kelvin["currentTargetLevel"] / 10)
 
             log.info("*"*20)
-            log.info("Current Temp Level: %s" % global_current_temp)
-            if global_side_active:
-                log.info("Target Temp Level: %s" % global_target_temp)
+            log.info("Current Temp Level: %s" % current_temp)
+            if side_active:
+                log.info("Target Temp Level: %s" % target_temp)
             else:
                 log.info("Target Temp Level: Off")
             log.info("*"*20)
             log.info("")
 
-            global_api_lock = False
+            api_lock = False
         await asyncio.sleep(30)
 
 
@@ -369,7 +366,7 @@ async def temp_up_loop():
 
         :returns: None
     """
-    global global_target_temp, global_target_temp_is_pending
+    global target_temp, target_temp_is_pending, skip_next_display_off
     while True:
         button = async_button.SimpleButton(pin=board.D5, value_when_pressed=False, pull=True, interval=0.25)
         await button.pressed()
@@ -378,11 +375,12 @@ async def temp_up_loop():
         if display.brightness == 0:
             log.debug("Display On! (Up)")
             display.brightness = 0.1
+            skip_next_display_off = True
         else:
             log.info("Temp Up!")
-            if global_target_temp < 10:
-                global_target_temp += 1
-                global_target_temp_is_pending = True
+            if target_temp < 10:
+                target_temp += 1
+                target_temp_is_pending = True
             else:
                 log.info("Max Temp Reached!")
 
@@ -395,7 +393,7 @@ async def temp_down_loop():
 
         :returns: None
     """
-    global global_target_temp, global_target_temp_is_pending
+    global target_temp, target_temp_is_pending, skip_next_display_off
     while True:
         button = async_button.SimpleButton(pin=board.D6, value_when_pressed=False, pull=True, interval=0.25)
         await button.pressed()
@@ -404,11 +402,12 @@ async def temp_down_loop():
         if display.brightness == 0:
             log.debug("Display On! (Down)")
             display.brightness = 0.1
+            skip_next_display_off = True
         else:
             log.info("Temp Down!")
-            if global_target_temp > -10:
-                global_target_temp -= 1
-                global_target_temp_is_pending = True
+            if target_temp > -10:
+                target_temp -= 1
+                target_temp_is_pending = True
             else:
                 log.info("Min Temp Reached!")
 
@@ -435,24 +434,24 @@ async def update_display_loop(current_text_area, target_text_area):
 
     while True:
         # Only update color or text if changed
-        current_color = set_color(global_current_temp)
+        current_color = set_color(current_temp)
         if current_color_last_set != current_color:
             current_text_area.color = current_color
             current_color_last_set = current_color
 
-        if current_text_last_set != str(global_current_temp):
-            current_text_area.text = str(global_current_temp)
-            current_text_last_set = str(global_current_temp)
+        if current_text_last_set != str(current_temp):
+            current_text_area.text = str(current_temp)
+            current_text_last_set = str(current_temp)
 
-        target_color = set_color(global_target_temp)
+        target_color = set_color(target_temp)
         if target_color_last_set != target_color:
             target_text_area.color = target_color
             target_color_last_set = target_color
 
-        if target_text_last_set != str(global_target_temp):
-            if global_side_active:
-                target_text_area.text = str(global_target_temp)
-                target_text_last_set = str(global_target_temp)
+        if target_text_last_set != str(target_temp):
+            if side_active:
+                target_text_area.text = str(target_temp)
+                target_text_last_set = str(target_temp)
             else:
                 target_text_area.text = "Off"
                 target_text_last_set = "Off"
@@ -466,11 +465,11 @@ async def turn_off_display_loop():
 
         :returns: None
     """
-    global global_skip_next_display_off
+    global skip_next_display_off
     while True:
         # Skip this loop once if the display was turned on by a button press
-        if global_skip_next_display_off:
-            global_skip_next_display_off = False
+        if skip_next_display_off:
+            skip_next_display_off = False
         else:
             display.brightness = 0
             log.debug("Display Off!")
@@ -484,7 +483,7 @@ async def main():
     (current_text_area, target_text_area) = setup_display()
 
     get_8s_access_token()
-    get_8s_user_global_device_id()
+    get_8s_user_device_id()
 
     # interrupt_task = asyncio.create_task(catch_interrupt(board.D5))
     update_display_task = asyncio.create_task(update_display_loop(current_text_area, target_text_area))
